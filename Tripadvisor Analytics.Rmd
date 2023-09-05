@@ -1,0 +1,143 @@
+---
+title: "Programming for Analytics- Tripadvisor"
+output:
+  html_document: default
+  pdf_document: default
+  date: "Fall 2023"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse) ### Importing tidyverse instead of individual packages
+```
+### Data import
+```{r}
+hotels <- read_csv("/Users/nolancutler/Desktop/Programming for Analytics/Assignment 2/hotels.txt",
+    col_types = cols(hotel_code = col_character(),
+                     location_code = col_character()))
+   ### Hotel codes and locations should be char values- does not make sense to perform mathematical operations
+```
+#### Describing imported data
+```{r}
+head(hotels)
+str(hotels)
+summary(hotels)
+```
+From the summary we can see that there are outliers and many missing values in a number of numeric variables.
+
+### Business Questions
+
+#### How many observations are in the dataset? Observations are rows, therefore nrow() will get the job done.
+
+```{r}
+nrow(hotels)
+```
+
+#### How many stays per each property type?
+
+```{r}
+hotels %>%
+  group_by(hotel_type) %>%
+  tally()
+```
+
+#### Outliers
+Identify columns for which we wish to find outliers and set to NA.
+
+```{r}
+outvars <- c("rooms", "bubble_one", "bubble_two", "bubble_three", "bubble_four", "bubble_five",
+             "page_position", "out_of", "reviews", "reviews_per_room", "traffic", "traffic_per_room",
+             "OTA_region_rate")
+
+hotels[outvars] <- data.frame(lapply(hotels[outvars], function(x) {
+  ifelse(x %in% boxplot.stats(x)$out, NA, x) }))
+
+summary(hotels)
+
+```
+
+#### Missing values
+```{r}
+
+missvars <- c("rooms", "bubble_rating", "bubble_one", "bubble_two", "bubble_three", "bubble_four",
+              "bubble_five", "page_position", "out_of", "reviews", "domestic_reviews", "international_reviews",
+              "reviews_per_room", "management_response_rate", "traffic", "traffic_per_room", "OTA_region_rate")
+
+hotels[missvars] <- data.frame(lapply(hotels[missvars], function(x) {
+  ifelse(is.na(x), mean(x, na.rm = TRUE), x) }))
+
+summary(hotels)
+
+```
+
+#### Using ggplot2 to prooduce a boxplot chart of traffic by hotel_type.
+
+```{r}
+ggplot(hotels, aes(x = hotel_type, y=traffic))+
+  geom_boxplot()+
+  facet_grid(.~hotel_type)+
+  labs(title = "Traffic by Property Type", x ="property type")+
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Note that traffic is highly skewed. See what happens if we transform traffic with the log function:
+
+```{r}
+hotels %>% 
+  mutate(log_traffic = log(traffic)) %>%
+  ggplot(aes(x = hotel_type, y = log_traffic)) +
+    geom_boxplot()+
+    facet_grid(.~hotel_type) +
+    labs(title = "Traffic by Property Type", x ="Property Type")+
+    theme_bw() +
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+#### Finding number of business subscriptions
+
+```{r}
+hotels %>%
+  filter(subscriber == 1) %>%
+  group_by(subscriber) %>%
+  tally()
+```
+There are 46935 Business subscribers.
+
+#### Calculating proportion of subscribers for each country and identifying top five countries by subscriber proportion.
+
+```{r}
+hotels %>%
+  filter(hotel_type == "Hotel") %>%
+  group_by(country_name) %>%
+  summarize(subscriber_prop = mean(subscriber, na.rm = TRUE)) %>%
+  arrange(desc(subscriber_prop)) %>%
+  head(5)
+```
+
+#### Ocean City has the most readers of reviews from China.
+
+```{r}
+# Find the country code for China:
+hotels %>%
+  filter(country_name == "China")
+
+
+hotels %>%
+  filter(country_name == "United States" & 
+           (visitor_country1 == "CHN" | visitor_country2 == "CHN" | visitor_country3 == "CHN")) %>%
+  count(location_name, sort = TRUE)
+```
+
+#### What proportions of those Chinese review readers of Ocean City prefer Hotel, B&B and "other" for their stays?
+
+```{r}
+hotels %>%
+  filter(location_name == "Ocean City" & 
+         (visitor_country1 == "CHN" | visitor_country2 == "CHN" | visitor_country3 == "CHN")) %>%
+  group_by(hotel_type) %>%
+  summarise(n = n()) %>% 
+  ungroup() %>%
+  complete(hotel_type = c("Hotel", "B & B", "Other"), fill = list(n = 0)) %>%
+#### Using Complete to show reservations of "other", even though they are at 0.
+  mutate(freq = round(n / sum(n), 2))
+```
